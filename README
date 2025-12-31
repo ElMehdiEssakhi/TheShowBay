@@ -1,0 +1,9 @@
+## ⚠️ Important
+
+The `src/firebase/config.js` file contains your Firebase configuration and **is not included** in this repository for security reasons.  
+
+To run this project locally:
+
+1. Ask the project owner for `config.js`.  
+2. Place it in `src/firebase/config.js`.  
+3. Install dependencies:
