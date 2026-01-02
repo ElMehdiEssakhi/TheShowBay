@@ -170,7 +170,7 @@ const playlistStyle = getRadialStyle(animation, 0);
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020617" />
       
       {/* If menu is open, show a dark overlay to close it when tapped */}
@@ -230,7 +230,7 @@ const playlistStyle = getRadialStyle(animation, 0);
         </TouchableOpacity>
         
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
