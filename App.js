@@ -1,15 +1,26 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./src/firebase/config";
-
-import { NavigationContainer } from "@react-navigation/native";
+import { View, ActivityIndicator } from "react-native";
+import { NavigationContainer , DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-
 import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
-import HomeScreen from "./src/screens/HomeScreen";
+import ShowScreen from "./src/screens/ShowScreen";
+import TabNavigator from "./src/navigation/TabNavigator";
 
 const Stack = createNativeStackNavigator();
+
+const MyTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: "#020617", // <--- THIS FIXES THE FLASH
+    card: "#020617",       
+    text: "#f8fafc",
+    border: "#0f172a",     
+  },
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -24,15 +35,25 @@ export default function App() {
   }, []);
 
   if (loading) {
-    return null; // or a splash/loading screen
+    return (
+      <View style={{ flex: 1, backgroundColor: "#020617", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color="#22c55e" />
+      </View>
+    );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={MyTheme}>
+      
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           // User is logged in
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <>
+          {/* Bottom Tabs */}
+          <Stack.Screen name="Tabs" component={TabNavigator} />
+          {/* Screens without bottom tabs */}
+          <Stack.Screen name="Show" component={ShowScreen} />
+          </>
         ) : (
           // User is not logged in
           <>
