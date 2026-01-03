@@ -6,6 +6,8 @@ import { Ionicons } from "@expo/vector-icons";
 // Import your screens here
 import HomeScreen from "../screens/HomeScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import ProfileStackNavigator from "./ProfileStackNavigator";
+import HomeStackNavigator from "./HomeStackNavigator";
 // import SearchScreen from "../screens/SearchScreen"; // Uncomment when you have it
 
 const Tab = createBottomTabNavigator();
@@ -43,7 +45,7 @@ export default function TabNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Home" component={HomeStackNavigator} />
       {/* Using HomeScreen as placeholder for Search */}
       <Tab.Screen name="Search" component={HomeScreen} 
         listeners={{
@@ -53,7 +55,7 @@ export default function TabNavigator() {
           },
         }} 
       /> 
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>
   );
 }

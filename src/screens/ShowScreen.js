@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,63 +10,161 @@ import {
   FlatList,
   Dimensions,
   StatusBar,
+  Alert,
 } from "react-native";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// --- NEW: FIREBASE IMPORTS ---
+// Replace these paths with your actual Firebase setup
+import { auth } from "../firebase/config"; 
+// Assuming you have created a service file for Firestore operations
+import { 
+    addToWatchlist, 
+    removeFromWatchlist, 
+    getShowStatus 
+} from "../firebase/services/firestoreService"; 
+// ---------------------------
 
 const { width } = Dimensions.get("window");
 
 export default function ShowScreen({ route, navigation }) {
   const { showId } = route.params;
+  const insets = useSafeAreaInsets();
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedSeason, setSelectedSeason] = useState(1);
+  const [error, setError] = useState(null);
+  const [selectedSeason, setSelectedSeason] = useState(null);
+
+  // --- NEW: WATCHLIST STATE ---
+  const [inWatchlist, setInWatchlist] = useState(false);
+  // Used to show a loading indicator specifically on the button if needed, 
+  // or prevent double presses.
+  const [watchlistProcessing, setWatchlistProcessing] = useState(false); 
+  // ---------------------------
+
 
   useEffect(() => {
     fetchShowData();
-  }, []);
+    // --- NEW: Check status on load ---
+    checkUserWatchlistStatus();
+  }, [showId]);
+
+
+  // --- NEW: FIREBASE LOGIC ---
+
+  // 1. Check if already in watchlist on load
+  const checkUserWatchlistStatus = async () => {
+      try {
+          const isAdded = await getShowStatus(showId);
+          setInWatchlist(isAdded.inWatchlist);
+      } catch (err) {
+          console.log("Error checking watchlist status:", err);
+      }
+  };
+
+  // 2. Handle toggling the button
+  const handleWatchlistToggle = async () => {
+      if (watchlistProcessing) return; // Prevent double press
+      setWatchlistProcessing(true);
+
+      // OPTIMISTIC UPDATE: Update UI immediately for snappy feel
+      const previousState = inWatchlist;
+      setInWatchlist(!previousState);
+
+      try {
+          if (previousState) {
+              // It was in watchlist, so remove it
+              await removeFromWatchlist(showId);
+          } else {
+              // It wasn't in watchlist, so add it
+              // We pass required data so the watchlist screen doesn't need to refetch API
+              const showDataForFirestore = {
+                  id: data.id,
+                  name: data.name,
+                  poster: data.image?.medium || null ,
+              };
+              await addToWatchlist(showDataForFirestore);
+          }
+          // Success - UI is already updated due to optimistic update
+      } catch (err) {
+          console.error("Watchlist action failed:", err);
+          // REVERT UI on failure
+          setInWatchlist(previousState);
+          Alert.alert("Error", "Could not update watchlist. Please try again.");
+      } finally {
+          setWatchlistProcessing(false);
+      }
+  };
+  // ---------------------------
+
 
   const fetchShowData = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      // We use 'embed' to get everything in ONE request
-      // embed[]=episodes gets all episodes
-      // embed[]=cast gets the actors
       const res = await axios.get(
         `https://api.tvmaze.com/shows/${showId}?embed[]=episodes&embed[]=cast`
       );
       setData(res.data);
+      
+      if (res.data._embedded?.episodes?.length > 0) {
+         const uniqueSeasons = [...new Set(res.data._embedded.episodes.map(ep => ep.season))];
+         uniqueSeasons.sort((a, b) => a - b);
+         if (uniqueSeasons.length > 0) {
+             setSelectedSeason(uniqueSeasons[0]);
+         }
+      }
+
     } catch (err) {
       console.log("Error fetching details:", err);
+      setError("Failed to load show details.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- HELPER: Group Episodes by Season ---
+  // --- HELPERS (Memoized) ---
   const seasonsData = useMemo(() => {
     if (!data?._embedded?.episodes) return {};
-    
-    // Group episodes: { "1": [ep1, ep2], "2": [ep1] }
-    const grouped = data._embedded.episodes.reduce((acc, ep) => {
+    return data._embedded.episodes.reduce((acc, ep) => {
       const s = ep.season;
       if (!acc[s]) acc[s] = [];
       acc[s].push(ep);
       return acc;
     }, {});
-
-    return grouped;
   }, [data]);
 
-  const availableSeasons = Object.keys(seasonsData).map(Number).sort((a, b) => a - b);
-  const currentEpisodes = seasonsData[selectedSeason] || [];
+  const availableSeasons = useMemo(() => {
+      return Object.keys(seasonsData).map(Number).sort((a, b) => a - b);
+  }, [seasonsData]);
+
+  const currentEpisodes = useMemo(() => {
+      return selectedSeason ? (seasonsData[selectedSeason] || []) : [];
+  }, [seasonsData, selectedSeason]);
+
 
   if (loading) {
     return (
-      <View style={styles.loader}>
+      <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#22c55e" />
       </View>
     );
+  }
+
+  if (error) {
+      return (
+          <View style={styles.centerContainer}>
+              <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={fetchShowData}>
+                  <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+          </View>
+      );
   }
 
   if (!data) return null;
@@ -83,15 +181,15 @@ export default function ShowScreen({ route, navigation }) {
             style={styles.poster}
             resizeMode="cover"
           />
-          {/* Gradient for text readability */}
           <LinearGradient
             colors={["transparent", "#020617"]}
             style={styles.gradient}
           />
           
           <TouchableOpacity 
-            style={styles.backButton}
+            style={[styles.backButton, { top: insets.top + 10 }]}
             onPress={() => navigation.goBack()}
+            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
           >
             <Ionicons name="arrow-back" size={28} color="#fff" />
           </TouchableOpacity>
@@ -103,27 +201,44 @@ export default function ShowScreen({ route, navigation }) {
           
           <View style={styles.metaRow}>
             <Text style={styles.metaText}>
-              {data.premiered?.slice(0, 4)}
+              {data.premiered?.slice(0, 4) || "N/A"}
             </Text>
             <Text style={styles.dot}>•</Text>
             <Text style={[styles.metaText, { color: data.status === "Ended" ? "#ef4444" : "#22c55e" }]}>
               {data.status}
             </Text>
-            <Text style={styles.dot}>•</Text>
-            <Text style={styles.metaText}>{data.averageRuntime} min</Text>
+            {data.averageRuntime ? (
+                <>
+                 <Text style={styles.dot}>•</Text>
+                 <Text style={styles.metaText}>{data.averageRuntime} min</Text>
+                </>
+            ) : null}
           </View>
 
-          {/* User Actions (Letterboxd Style) */}
+          {/* --- ACTION ROW (UPDATED) --- */}
           <View style={styles.actionRow}>
-            <ActionButton icon="star-outline" label="Rate" />
-            <ActionButton icon="eye-outline" label="Log" />
-            <ActionButton icon="list-outline" label="List" />
-            <ActionButton icon="share-social-outline" label="Share" />
+            {/* 1. Rate (Placeholder) */}
+            <ActionButton icon="star-outline" label="Rate" onPress={() => Alert.alert("Coming Soon")} />
+            
+            {/* 2. WATCHLIST TOGGLE (Replaces Log) */}
+            <ActionButton 
+                // Use filled icon if in watchlist, outline if not
+                icon={inWatchlist ? "bookmark" : "bookmark-outline"} 
+                label={inWatchlist ? "Added" : "Watchlist"}
+                // Pass active state for styling
+                active={inWatchlist} 
+                onPress={handleWatchlistToggle}
+            />
+
+            {/* 3. List (Placeholder) */}
+            <ActionButton icon="list-outline" label="List" onPress={() => Alert.alert("Coming Soon")} />
+            {/* 4. Share (Placeholder) */}
+            <ActionButton icon="share-social-outline" label="Share" onPress={() => Alert.alert("Coming Soon")} />
           </View>
 
           {/* Genres */}
           <View style={styles.genres}>
-            {data.genres.map((g) => (
+            {data.genres?.map((g) => (
               <View key={g} style={styles.genreTag}>
                 <Text style={styles.genreText}>{g}</Text>
               </View>
@@ -131,17 +246,19 @@ export default function ShowScreen({ route, navigation }) {
           </View>
 
           {/* Rating Block */}
-          <View style={styles.ratingBlock}>
-             <View style={styles.scoreBox}>
-                <Ionicons name="star" size={16} color="#FFD700" />
-                <Text style={styles.scoreText}>{data.rating?.average || "N/A"}</Text>
-             </View>
-             <Text style={styles.scoreLabel}>TvMaze Score</Text>
-          </View>
+          {data.rating?.average && (
+            <View style={styles.ratingBlock}>
+                <View style={styles.scoreBox}>
+                    <Ionicons name="star" size={16} color="#FFD700" />
+                    <Text style={styles.scoreText}>{data.rating.average}</Text>
+                </View>
+                <Text style={styles.scoreLabel}>TvMaze Score</Text>
+            </View>
+          )}
 
           <Text style={styles.sectionTitle}>Overview</Text>
           <Text style={styles.summary}>
-            {data.summary?.replace(/<[^>]+>/g, "")}
+            {data.summary ? data.summary.replace(/<[^>]+>/g, "") : "No summary available."}
           </Text>
 
           {/* --- CAST SECTION --- */}
@@ -149,79 +266,55 @@ export default function ShowScreen({ route, navigation }) {
           <FlatList
             horizontal
             data={data._embedded?.cast?.slice(0, 10) || []}
-            keyExtractor={(item) => item.person.id.toString()}
+            keyExtractor={(item) => item.person.id.toString() + item.character.id.toString()}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 12, paddingBottom: 20 }}
-            renderItem={({ item }) => (
-              <View style={styles.castCard}>
-                <Image 
-                  source={{ uri: item.person.image?.medium }} 
-                  style={styles.castImage} 
-                />
-                <Text numberOfLines={1} style={styles.castName}>{item.person.name}</Text>
-                <Text numberOfLines={1} style={styles.charName}>{item.character.name}</Text>
-              </View>
-            )}
+            renderItem={({ item }) => <CastMember item={item} />}
+            ListEmptyComponent={<Text style={styles.emptyText}>Cast information unavailable.</Text>}
           />
 
           {/* --- SEASONS & EPISODES --- */}
-          <View style={styles.seasonHeader}>
-            <Text style={styles.sectionTitle}>Episodes</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={{ marginLeft: 10 }}
-            >
-              {availableSeasons.map(seasonNum => (
-                <TouchableOpacity 
-                  key={seasonNum}
-                  style={[
-                    styles.seasonTab, 
-                    selectedSeason === seasonNum && styles.seasonTabActive
-                  ]}
-                  onPress={() => setSelectedSeason(seasonNum)}
+          {availableSeasons.length > 0 ? (
+            <>
+              <View style={styles.seasonHeader}>
+                <Text style={styles.sectionTitle}>Episodes</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={{ marginLeft: 10 }}
                 >
-                  <Text style={[
-                    styles.seasonText,
-                    selectedSeason === seasonNum && styles.seasonTextActive
-                  ]}>
-                    Season {seasonNum}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Episode List for Selected Season */}
-          <View style={styles.episodeList}>
-            {currentEpisodes.map((ep) => (
-              <View key={ep.id} style={styles.episodeRow}>
-                <Image 
-                  source={{ uri: ep.image?.medium }} 
-                  style={styles.epImage} 
-                />
-                <View style={styles.epInfo}>
-                  <Text style={styles.epTitle}>
-                    {ep.number}. {ep.name}
-                  </Text>
-                  <View style={styles.epMeta}>
-                    <Text style={styles.epDate}>{ep.airdate}</Text>
-                    {ep.rating?.average && (
-                      <View style={styles.epRating}>
-                        <Ionicons name="star" size={10} color="#fbbf24" />
-                        <Text style={styles.epRatingText}>{ep.rating.average}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-                <TouchableOpacity>
-                   <Ionicons name="ellipsis-vertical" size={18} color="#6b7280" />
-                </TouchableOpacity>
+                  {availableSeasons.map(seasonNum => (
+                    <TouchableOpacity 
+                      key={seasonNum}
+                      style={[
+                        styles.seasonTab, 
+                        selectedSeason === seasonNum && styles.seasonTabActive
+                      ]}
+                      onPress={() => setSelectedSeason(seasonNum)}
+                    >
+                      <Text style={[
+                        styles.seasonText,
+                        selectedSeason === seasonNum && styles.seasonTextActive
+                      ]}>
+                        Season {seasonNum}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
-            ))}
-          </View>
 
-          {/* Bottom Padding */}
+              <FlatList 
+                  data={currentEpisodes}
+                  keyExtractor={(item) => item.id.toString()}
+                  renderItem={({item}) => <EpisodeRow item={item} />}
+                  scrollEnabled={false}
+                  contentContainerStyle={styles.episodeList}
+              />
+             </>
+          ) : (
+             <Text style={[styles.emptyText, {marginTop: 20}]}>No episode information available.</Text>
+          )}
+
           <View style={{ height: 40 }} />
         </View>
       </ScrollView>
@@ -229,26 +322,101 @@ export default function ShowScreen({ route, navigation }) {
   );
 }
 
-// Helper Component for Buttons
-function ActionButton({ icon, label }) {
-  return (
-    <TouchableOpacity style={styles.actionBtn}>
-      <Ionicons name={icon} size={24} color="#94a3b8" />
-      <Text style={styles.actionLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
+// --- EXTRACTED SUB-COMPONENTS ---
 
+// 1. Action Button Helper (UPDATED to support 'active' state)
+function ActionButton({ icon, label, onPress, active = false }) {
+    // Choose color based on active state. 
+    // Green (#22c55e) for active watchlist, Gray (#94a3b8) for inactive.
+    const color = active ? "#22c55e" : "#94a3b8";
+    
+    return (
+      <TouchableOpacity style={styles.actionBtn} onPress={onPress}>
+        <Ionicons name={icon} size={24} color={color} />
+        <Text style={[styles.actionLabel, { color: color }]}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+// ... (CastMember and EpisodeRow components remain exactly the same as in the previous response) ...
+// 2. Cast Member Card
+const CastMember = React.memo(({ item }) => (
+    <View style={styles.castCard}>
+    {item.person.image?.medium ? (
+        <Image 
+            source={{ uri: item.person.image.medium }} 
+            style={styles.castImage} 
+        />
+    ) : (
+        <View style={[styles.castImage, styles.placeholderImage]}>
+            <Ionicons name="person" size={40} color="#475569" />
+        </View>
+    )}
+    
+    <Text numberOfLines={1} style={styles.castName}>{item.person.name}</Text>
+    <Text numberOfLines={1} style={styles.charName}>{item.character.name}</Text>
+    </View>
+));
+
+// 3. Episode Row
+const EpisodeRow = React.memo(({ item: ep }) => (
+    <View style={styles.episodeRow}>
+      {ep.image?.medium ? (
+         <Image source={{ uri: ep.image.medium }} style={styles.epImage} />
+      ) : (
+         <View style={[styles.epImage, styles.placeholderImage]}>
+            <Ionicons name="image-outline" size={24} color="#475569" />
+         </View>
+      )}
+      
+      <View style={styles.epInfo}>
+        <Text style={styles.epTitle} numberOfLines={1}>
+          {ep.number ? `${ep.number}. ` : ""}{ep.name}
+        </Text>
+        <View style={styles.epMeta}>
+          <Text style={styles.epDate}>{ep.airdate || "No date"}</Text>
+          {ep.rating?.average && (
+            <View style={styles.epRating}>
+              <Ionicons name="star" size={10} color="#fbbf24" />
+              <Text style={styles.epRatingText}>{ep.rating.average}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      <TouchableOpacity style={{padding: 8}}>
+          <Ionicons name="ellipsis-vertical" size={18} color="#6b7280" />
+      </TouchableOpacity>
+    </View>
+));
+
+// ... (Styles remain exactly the same as in the previous response) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#020617",
   },
-  loader: {
+  centerContainer: {
     flex: 1,
     backgroundColor: "#020617",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+      color: "#ef4444",
+      marginTop: 10,
+      marginBottom: 20,
+      fontSize: 16,
+  },
+  retryBtn: {
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      backgroundColor: '#1e293b',
+      borderRadius: 8,
+  },
+  retryText: {
+      color: "#f8fafc",
+      fontWeight: 'bold'
   },
   posterContainer: {
     width: width,
@@ -258,25 +426,26 @@ const styles = StyleSheet.create({
   poster: {
     width: "100%",
     height: "100%",
+    backgroundColor: '#1e293b'
   },
   gradient: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: 250, // Fade height
+    height: 250,
   },
   backButton: {
     position: 'absolute',
-    top: 50,
     left: 20,
     backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 8,
-    borderRadius: 20
+    borderRadius: 20,
+    zIndex: 10,
   },
   content: {
     paddingHorizontal: 16,
-    marginTop: -80, // Pull up over the gradient
+    marginTop: -80,
   },
   title: {
     fontSize: 32,
@@ -314,7 +483,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionLabel: {
-    color: "#94a3b8",
     fontSize: 10,
     marginTop: 4,
   },
@@ -367,7 +535,10 @@ const styles = StyleSheet.create({
     color: "#cbd5e1",
     marginBottom: 20,
   },
-  /* Cast Styles */
+  emptyText: {
+      color: "#64748b",
+      fontStyle: 'italic',
+  },
   castCard: {
     width: 100,
     marginRight: 12,
@@ -375,9 +546,14 @@ const styles = StyleSheet.create({
   castImage: {
     width: 100,
     height: 100,
-    borderRadius: 50, // Circle
+    borderRadius: 50,
     marginBottom: 8,
-    backgroundColor: '#1e293b'
+    backgroundColor: '#1e293b',
+  },
+  placeholderImage: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#334155'
   },
   castName: {
     color: '#e2e8f0',
@@ -390,7 +566,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textAlign: 'center'
   },
-  /* Episodes Styles */
   seasonHeader: {
     flexDirection: 'row',
     alignItems: 'center',

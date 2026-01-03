@@ -8,6 +8,7 @@ import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
 import ShowScreen from "./src/screens/ShowScreen";
 import TabNavigator from "./src/navigation/TabNavigator";
+import WatchlistScreen from "./src/screens/WatchList";
 
 const Stack = createNativeStackNavigator();
 
@@ -51,8 +52,6 @@ export default function App() {
           <>
           {/* Bottom Tabs */}
           <Stack.Screen name="Tabs" component={TabNavigator} />
-          {/* Screens without bottom tabs */}
-          <Stack.Screen name="Show" component={ShowScreen} />
           </>
         ) : (
           // User is not logged in

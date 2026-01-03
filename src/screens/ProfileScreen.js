@@ -92,7 +92,7 @@ export default function ProfileScreen({ navigation }) {
           
           <MenuOption icon="heart-outline" label="Favorites" onPress={() => alert("Favorites Coming Soon!")} />
           <MenuOption icon="list-outline" label="My Lists" onPress={() => alert("My Lists Coming Soon!")} />
-          <MenuOption icon="time-outline" label="Watch History" onPress={() => alert("Watch History Coming Soon!")} />
+          <MenuOption icon="time-outline" label="WatchList" onPress={() => navigation?.navigate("Watchlist")} />
         </View>
 
         <View style={styles.section}>
