@@ -11,20 +11,21 @@ import {
   Dimensions,
   StatusBar,
   Alert,
+  Modal,           
+  TextInput,       
+  KeyboardAvoidingView,
+  Platform
 } from "react-native";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-// --- NEW: FIREBASE IMPORTS ---
-// Replace these paths with your actual Firebase setup
-import { auth } from "../firebase/config"; 
 // Assuming you have created a service file for Firestore operations
 import { 
     addToWatchlist, 
     removeFromWatchlist, 
-    getShowStatus 
+    getShowStatus,
+    saveShowReview
 } from "../firebase/services/firestoreService"; 
 // ---------------------------
 
@@ -46,21 +47,31 @@ export default function ShowScreen({ route, navigation }) {
   const [watchlistProcessing, setWatchlistProcessing] = useState(false); 
   // ---------------------------
 
+  // --- REVIEW MODAL STATE ---
+  const [modalVisible, setModalVisible] = useState(false);
+  const [userRating, setUserRating] = useState(0);      // 1-5
+  const [isFavorite, setIsFavorite] = useState(false);  // Heart toggle
+  const [reviewText, setReviewText] = useState("");     // Text input
+  const [savingReview, setSavingReview] = useState(false);
+
 
   useEffect(() => {
     fetchShowData();
     // --- NEW: Check status on load ---
-    checkUserWatchlistStatus();
+    checkUserStatus();
   }, [showId]);
 
 
   // --- NEW: FIREBASE LOGIC ---
 
   // 1. Check if already in watchlist on load
-  const checkUserWatchlistStatus = async () => {
+  const checkUserStatus = async () => {
       try {
-          const isAdded = await getShowStatus(showId);
-          setInWatchlist(isAdded.inWatchlist);
+          const status = await getShowStatus(showId);
+          setInWatchlist(status.inWatchlist);
+          setUserRating(status.userRating);
+          setIsFavorite(status.isFavorite);
+          setReviewText(status.reviewText);
       } catch (err) {
           console.log("Error checking watchlist status:", err);
       }
@@ -101,6 +112,31 @@ export default function ShowScreen({ route, navigation }) {
   };
   // ---------------------------
 
+  const handleSaveReview = async () => {
+      setSavingReview(true);
+      
+      try {
+        const showData = {
+            id: data.id,
+            name: data.name,
+            poster: data.image?.medium || null,
+        };
+        
+        const reviewData = {
+            rating: userRating,
+            isFavorite: isFavorite,
+            reviewText: reviewText
+        };
+
+        await saveShowReview(showData, reviewData);
+        setModalVisible(false); // Close modal
+      } catch (error) {
+          Alert.alert("Error", "Failed to save review.");
+          console.error("Save review error:", error);
+      } finally {
+          setSavingReview(false);
+      }
+  };
 
   const fetchShowData = async () => {
     setLoading(true);
@@ -218,7 +254,10 @@ export default function ShowScreen({ route, navigation }) {
           {/* --- ACTION ROW (UPDATED) --- */}
           <View style={styles.actionRow}>
             {/* 1. Rate (Placeholder) */}
-            <ActionButton icon="star-outline" label="Rate" onPress={() => Alert.alert("Coming Soon")} />
+            <ActionButton icon={userRating > 0 ? "star" : "star-outline"} 
+            label={userRating > 0 ? `${userRating}/5` : "Rate"}
+            active={userRating > 0}
+            onPress={() =>setModalVisible(true)} />
             
             {/* 2. WATCHLIST TOGGLE (Replaces Log) */}
             <ActionButton 
@@ -318,6 +357,84 @@ export default function ShowScreen({ route, navigation }) {
           <View style={{ height: 40 }} />
         </View>
       </ScrollView>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.modalOverlay}
+        >
+            <View style={styles.modalContent}>
+                
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Rate & Review</Text>
+                    <TouchableOpacity onPress={() => setModalVisible(false)}>
+                        <Ionicons name="close" size={24} color="#94a3b8" />
+                    </TouchableOpacity>
+                </View>
+
+                {/* Show Title */}
+                <Text style={styles.modalShowName}>{data.name}</Text>
+
+                {/* Star Rating System */}
+                <View style={styles.starsContainer}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity key={star} onPress={() => setUserRating(star)}>
+                            <Ionicons 
+                                name={star <= userRating ? "star" : "star-outline"} 
+                                size={36} 
+                                color="#FFD700" 
+                            />
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                {/* Favorite Toggle */}
+                <TouchableOpacity 
+                    style={styles.favoriteToggle} 
+                    onPress={() => setIsFavorite(!isFavorite)}
+                >
+                    <Ionicons 
+                        name={isFavorite ? "heart" : "heart-outline"} 
+                        size={24} 
+                        color={isFavorite ? "#ef4444" : "#94a3b8"} 
+                    />
+                    <Text style={[styles.favText, isFavorite && {color: "#ef4444"}]}>
+                        {isFavorite ? "Added to Favorites" : "Add to Favorites"}
+                    </Text>
+                </TouchableOpacity>
+
+                {/* Review Text Input */}
+                <TextInput
+                    style={styles.reviewInput}
+                    placeholder="Write your review here..."
+                    placeholderTextColor="#64748b"
+                    multiline
+                    value={reviewText}
+                    onChangeText={setReviewText}
+                    textAlignVertical="top"
+                />
+
+                {/* Save Button */}
+                <TouchableOpacity 
+                    style={styles.saveButton} 
+                    onPress={handleSaveReview}
+                    disabled={savingReview}
+                >
+                    {savingReview ? (
+                        <ActivityIndicator color="#020617" />
+                    ) : (
+                        <Text style={styles.saveButtonText}>Save Review</Text>
+                    )}
+                </TouchableOpacity>
+
+            </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -389,7 +506,6 @@ const EpisodeRow = React.memo(({ item: ep }) => (
     </View>
 ));
 
-// ... (Styles remain exactly the same as in the previous response) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -642,5 +758,76 @@ const styles = StyleSheet.create({
     color: '#fbbf24',
     fontSize: 10,
     fontWeight: '700'
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end", // Bottom sheet style
+    backgroundColor: "rgba(0,0,0,0.7)",
+  },
+  modalContent: {
+    backgroundColor: "#1e293b",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    minHeight: 450,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#f8fafc",
+  },
+  modalShowName: {
+      color: "#94a3b8",
+      fontSize: 14,
+      textAlign: 'center',
+      marginBottom: 20
+  },
+  starsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 24,
+  },
+  favoriteToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#0f172a',
+      padding: 12,
+      borderRadius: 12,
+      marginBottom: 24,
+      gap: 8
+  },
+  favText: {
+      color: "#94a3b8",
+      fontWeight: '600',
+      fontSize: 14
+  },
+  reviewInput: {
+    backgroundColor: "#0f172a",
+    color: "#f8fafc",
+    padding: 16,
+    borderRadius: 12,
+    height: 120,
+    fontSize: 16,
+    marginBottom: 24,
+    textAlignVertical: "top", // Important for multiline
+  },
+  saveButton: {
+    backgroundColor: "#22c55e",
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  saveButtonText: {
+    color: "#020617",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
 });

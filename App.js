@@ -6,10 +6,8 @@ import { NavigationContainer , DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
-import ShowScreen from "./src/screens/ShowScreen";
 import TabNavigator from "./src/navigation/TabNavigator";
-import WatchlistScreen from "./src/screens/WatchList";
-
+import { ThemeProvider } from './themes/ThemeContext';
 const Stack = createNativeStackNavigator();
 
 const MyTheme = {
@@ -44,23 +42,24 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer theme={MyTheme}>
-      
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
-          // User is logged in
-          <>
-          {/* Bottom Tabs */}
-          <Stack.Screen name="Tabs" component={TabNavigator} />
-          </>
-        ) : (
-          // User is not logged in
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <ThemeProvider>
+      <NavigationContainer theme={MyTheme}>  
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {user ? (
+            // User is logged in
+            <>
+            {/* Bottom Tabs */}
+            <Stack.Screen name="Tabs" component={TabNavigator} />
+            </>
+          ) : (
+            // User is not logged in
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+            </>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </ThemeProvider>
   );
 }

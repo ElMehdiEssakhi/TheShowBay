@@ -5,9 +5,9 @@ import { Ionicons } from "@expo/vector-icons";
 
 // Import your screens here
 import HomeScreen from "../screens/HomeScreen";
-import ProfileScreen from "../screens/ProfileScreen";
 import ProfileStackNavigator from "./ProfileStackNavigator";
 import HomeStackNavigator from "./HomeStackNavigator";
+import SearchStackNavigator from "./SearchStackNavigator";
 // import SearchScreen from "../screens/SearchScreen"; // Uncomment when you have it
 
 const Tab = createBottomTabNavigator();
@@ -46,15 +46,7 @@ export default function TabNavigator() {
       })}
     >
       <Tab.Screen name="Home" component={HomeStackNavigator} />
-      {/* Using HomeScreen as placeholder for Search */}
-      <Tab.Screen name="Search" component={HomeScreen} 
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault(); // prevent navigation
-            alert("Search Feature Coming Soon!");
-          },
-        }} 
-      /> 
+      <Tab.Screen name="Search" component={SearchStackNavigator}/> 
       <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>
   );

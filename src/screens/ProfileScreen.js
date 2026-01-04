@@ -18,7 +18,6 @@ export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Get current user info
     if (auth.currentUser) {
       setUser(auth.currentUser);
     }
@@ -61,7 +60,7 @@ export default function ProfileScreen({ navigation }) {
           </Text>
           <Text style={styles.email}>{user?.email || "No email"}</Text>
         </View>
-        <TouchableOpacity style={styles.settingsBtn} onPress={() => alert("Settings Coming Soon!")}>
+        <TouchableOpacity style={styles.settingsBtn} onPress={() => navigation.navigate("Settings")}>
           <Ionicons name="settings-outline" size={24} color="#e2e8f0" />
         </TouchableOpacity>
       </View>
@@ -90,7 +89,7 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           
-          <MenuOption icon="heart-outline" label="Favorites" onPress={() => alert("Favorites Coming Soon!")} />
+          <MenuOption icon="heart-outline" label="Favorites" onPress={() => navigation?.navigate("Favorites")} />
           <MenuOption icon="list-outline" label="My Lists" onPress={() => alert("My Lists Coming Soon!")} />
           <MenuOption icon="time-outline" label="WatchList" onPress={() => navigation?.navigate("Watchlist")} />
         </View>
@@ -167,7 +166,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   scrollContent: {
-    paddingBottom: 100, // Space for Navbar
+    paddingBottom: 100, 
   },
   statsRow: {
     flexDirection: "row",
@@ -233,7 +232,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   
-  /* Navbar */
   navbar: {
     position: "absolute",
     bottom: 0,

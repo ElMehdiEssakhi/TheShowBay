@@ -1,7 +1,9 @@
 import ProfileScreen from "../screens/ProfileScreen";
+import ShowScreen from "../screens/ShowScreen";
 import WatchlistScreen from "../screens/WatchList";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-
+import Favorites from "../screens/Favorites";
+import SettingStackNavigator from "./SettingStackNavigator";
 const ProfileStack = createNativeStackNavigator();
 
 export default function ProfileStackNavigator() {
@@ -13,6 +15,21 @@ export default function ProfileStackNavigator() {
         }}
       />
       <ProfileStack.Screen name="Watchlist" component={WatchlistScreen}
+      options={{
+            headerShown: false
+        }}
+      />
+      <ProfileStack.Screen name="Show" component={ShowScreen}
+      options={{
+            headerShown: false
+        }}
+      />
+      <ProfileStack.Screen name="Favorites" component={Favorites}
+      options={{
+            headerShown: false
+        }}
+      />
+      <ProfileStack.Screen name="Settings" component={SettingStackNavigator}
       options={{
             headerShown: false
         }}
