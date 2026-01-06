@@ -10,8 +10,7 @@ import {
   ActivityIndicator,
   Platform,
   StatusBar,
-  Animated, // Import Animated
-  TouchableWithoutFeedback // To close menu when tapping outside
+  ScrollView
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import axios from "axios";
@@ -21,105 +20,62 @@ const { width } = Dimensions.get("window");
 const POSTER_WIDTH = width / 3 - 16;
 const BATCH_SIZE = 12;
 
+const GENRES = ["All", "Action", "Drama", "Comedy", "Thriller", "Horror", "Romance", "Sci-Fi", "Crime", "Mystery", "Adventure", "Fantasy"];
+
 export default function HomeScreen({ navigation }) {
   const [shows, setShows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  
-  // --- FAB ANIMATION STATE ---
-  const [menuOpen, setMenuOpen] = useState(false);
-  const animation = useRef(new Animated.Value(0)).current;
+  const [selectedGenre, setSelectedGenre] = useState("All");
 
-  // TVMaze logic
   const currentPageRef = useRef(Math.floor(Math.random() * 200)); 
 
   useEffect(() => {
-    loadMoreShows();
-  }, []);
+    setShows([]); 
+    loadMoreShows(true); 
+  }, [selectedGenre]);
 
-  // --- 1. FAB TOGGLE LOGIC ---
-  const toggleMenu = () => {
-    const toValue = menuOpen ? 0 : 1;
-    
-    Animated.spring(animation, {
-      toValue,
-      friction: 6,
-      useNativeDriver: true,
-    }).start();
-    
-    setMenuOpen(!menuOpen);
-  };
-
- const FAB_SIZE = 58;
- const SUB_FAB_SIZE = 44;
- const RADIUS = FAB_SIZE; 
-  
-  const getRadialStyle = (animation, angleDeg) => {
-      const angle = (angleDeg * Math.PI) / 180;
-      const x = Math.cos(angle) * RADIUS;
-      const y = Math.sin(angle) * RADIUS;
-      return {
-        opacity: animation,
-        transform: [
-          { scale: animation },
-          {
-            translateX: animation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, x],
-            }),
-          },
-          {
-            translateY: animation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, y],
-            }),
-          },
-        ],
-      };
-  };
-
-const reviewStyle = getRadialStyle(animation, -70);  // straight up
-const playlistStyle = getRadialStyle(animation, 0);
-
-  const rotation = {
-    transform: [
-      {
-        rotate: animation.interpolate({
-          inputRange: [0, 1],
-          outputRange: ["0deg", "45deg"], // Rotate + to x
-        }),
-      },
-    ],
-  };
-
-  // --- 2. DATA LOGIC (UNCHANGED) ---
+  // --- 2. VALIDATION LOGIC ---
   const isValidShow = (show) => {
     const isScripted = show.type === "Scripted";
     const hasImage = show.image?.medium;
-    const isModern = show.premiered && parseInt(show.premiered) >= 2000;
+    const isModern = show.premiered && parseInt(show.premiered.substring(0, 4)) >= 2000;
     const isGoodQuality = (show.rating?.average >= 5.0) || (show.weight > 70);
-    const isEnglish = show.language === "English" || show.language === "English (US)";
-    return isScripted && hasImage && isModern && isGoodQuality && isEnglish;
+    const isEnglish = show.language === "English";
+    const matchesGenre = selectedGenre === "All" || (show.genres && show.genres.includes(selectedGenre));
+
+    return isScripted && hasImage && isModern && isGoodQuality && isEnglish && matchesGenre;
   };
 
+  // --- 3. RECURSIVE FETCHING ---
   const fetchValidBatch = async (startPage, accumulatedShows = []) => {
     try {
       if (accumulatedShows.length >= BATCH_SIZE) {
         return { shows: accumulatedShows, nextPage: startPage };
       }
-      // console.log(`Fetching page ${startPage}...`);
+      if (accumulatedShows.length > 0 && startPage > 300) {
+         return { shows: accumulatedShows, nextPage: 0 };
+      }
+
       const response = await axios.get(`https://api.tvmaze.com/shows?page=${startPage}`);
       const validShows = response.data.filter(isValidShow);
+      
       const shuffled = validShows.map(value => ({ value, sort: Math.random() }))
                                  .sort((a, b) => a.sort - b.sort)
                                  .map(({ value }) => value);
+                                 
       const newAccumulation = [...accumulatedShows, ...shuffled];
+
       if (newAccumulation.length < BATCH_SIZE) {
         return fetchValidBatch(startPage + 1, newAccumulation);
       }
+
       return { shows: newAccumulation, nextPage: startPage + 1 };
+
     } catch (err) {
-      if (err.response && err.response.status === 404) return { shows: accumulatedShows, nextPage: startPage };
+      if (err.response && err.response.status === 404) {
+          return { shows: accumulatedShows, nextPage: 0 }; 
+      }
       return { shows: accumulatedShows, nextPage: startPage };
     }
   };
@@ -141,7 +97,6 @@ const playlistStyle = getRadialStyle(animation, 0);
     loadMoreShows(true);
   };
 
-  // --- RENDERERS ---
   const renderShow = useCallback(({ item }) => {
     return (
       <TouchableOpacity
@@ -160,28 +115,44 @@ const playlistStyle = getRadialStyle(animation, 0);
   }, [navigation]);
 
   const renderFooter = () => {
-    if (!loading) return <View style={{ height: 100 }} />;
+    if (!loading) return null; // No invisible bar when not loading
     return (
       <View style={styles.loaderFooter}>
         <ActivityIndicator size="small" color="#22c55e" />
-        <Text style={{color: "#6b7280", fontSize: 10, marginTop: 5}}>Looking for good shows...</Text>
+        <Text style={{color: "#6b7280", fontSize: 10, marginTop: 5}}>
+            Finding {selectedGenre === "All" ? "good" : selectedGenre} shows...
+        </Text>
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['right', 'left']}>
       <StatusBar barStyle="light-content" backgroundColor="#020617" />
       
-      {/* If menu is open, show a dark overlay to close it when tapped */}
-      {menuOpen && (
-        <TouchableWithoutFeedback onPress={toggleMenu}>
-          <View style={styles.backdrop} />
-        </TouchableWithoutFeedback>
-      )}
-
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Discover</Text>
+        <View style={styles.filterRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 8}}>
+                {GENRES.map((genre) => (
+                    <TouchableOpacity 
+                        key={genre}
+                        style={[
+                            styles.filterChip, 
+                            selectedGenre === genre && styles.filterChipActive
+                        ]}
+                        onPress={() => setSelectedGenre(genre)}
+                    >
+                        <Text style={[
+                            styles.filterText,
+                            selectedGenre === genre && styles.filterTextActive
+                        ]}>
+                            {genre}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </View>
       </View>
 
       <FlatList
@@ -190,46 +161,24 @@ const playlistStyle = getRadialStyle(animation, 0);
         renderItem={renderShow}
         numColumns={3}
         columnWrapperStyle={{ justifyContent: "space-between" }}
+        
+        // --- THIS FIXES THE GAP ---
+        // 80 is roughly the height of a Tab Bar.
+        // This makes the content stop exactly above your navigation tabs.
         contentContainerStyle={styles.listContent}
+        
         onEndReached={() => loadMoreShows(false)}
         onEndReachedThreshold={0.5}
         onRefresh={handleRefresh}
         refreshing={refreshing}
         ListFooterComponent={renderFooter}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={!loading && (
+            <View style={{alignItems: 'center', marginTop: 50}}>
+                <Text style={{color: '#6b7280'}}>No shows found for this genre.</Text>
+            </View>
+        )}
       />
-
-      {/* --- EXPANDABLE FAB --- */}
-      <View style={styles.fabContainer}>
-        
-        {/* Option 1: Add Review */}
-        <Animated.View style={[styles.subButtonContainer, reviewStyle]}>
-          <TouchableOpacity style={styles.subFab} onPress={() => alert("Review Feature Coming Soon!")}>
-            <Ionicons name="pencil" size={20} color="#020617" />
-          </TouchableOpacity>
-          <View style={styles.labelContainer}>
-            <Text style={styles.labelText}>Add Review</Text>
-          </View>
-        </Animated.View>
-
-        {/* Option 2: Add Playlist */}
-        <Animated.View style={[styles.subButtonContainer, playlistStyle]}>
-          <TouchableOpacity style={styles.subFab} onPress={() => alert("Playlist Feature Coming Soon!")}>
-            <Ionicons name="list" size={20} color="#020617" />
-          </TouchableOpacity>
-          <View style={styles.labelContainer}>
-            <Text style={styles.labelText}>New Playlist</Text>
-          </View>
-        </Animated.View>
-
-        {/* Main Button */}
-        <TouchableOpacity style={styles.fab} onPress={toggleMenu} activeOpacity={0.8}>
-          <Animated.View style={rotation}>
-            <Ionicons name="add" size={28} color="#020617" />
-          </Animated.View>
-        </TouchableOpacity>
-        
-      </View>
     </SafeAreaView>
   );
 }
@@ -240,15 +189,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#020617",
     paddingTop: Platform.OS === "android" ? 25 : 0, 
   },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    zIndex: 9, 
-  },
   headerContainer: {
     paddingHorizontal: 12,
-    paddingBottom: 10,
+    paddingBottom: 15, 
     backgroundColor: "#020617",
+    zIndex: 10
   },
   header: {
     fontSize: 26,
@@ -256,9 +201,35 @@ const styles = StyleSheet.create({
     color: "#e5e7eb",
     marginVertical: 10,
   },
+  filterRow: {
+      flexDirection: 'row',
+  },
+  filterChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: '#1e293b',
+      borderWidth: 1,
+      borderColor: '#334155'
+  },
+  filterChipActive: {
+      backgroundColor: '#22c55e',
+      borderColor: '#22c55e'
+  },
+  filterText: {
+      color: '#94a3b8',
+      fontWeight: '600',
+      fontSize: 13
+  },
+  filterTextActive: {
+      color: '#020617',
+      fontWeight: 'bold'
+  },
   listContent: {
     paddingHorizontal: 12,
-    paddingBottom: 20,
+    // Just enough padding so the last item isn't covered by the Tab Bar.
+    // If you still see a gap, reduce this to 60 or 50.
+    paddingBottom: 30, 
   },
   card: {
     marginBottom: 16,
@@ -290,61 +261,7 @@ const styles = StyleSheet.create({
   },
   loaderFooter: {
     paddingVertical: 20,
-    marginBottom: 80,
+    // No large margin needed anymore since we rely on paddingBottom
     alignItems: "center",
-  },
-  
-  /* --- FAB STYLES --- */
-  fabContainer: {
-    position: "absolute",
-    bottom: 20,
-    left: 20, // Kept left as per your code (though usually right) 
-    zIndex: 10,
-    width: 60, 
-    height: 60,
-  },
-  fab: {
-    backgroundColor: "#22c55e",
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 6,
-    shadowColor: "#22c55e",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  subButtonContainer: {
-    position: "absolute",
-    bottom: 7,
-    left: 7,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  subFab: {
-    backgroundColor: "#fff",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 4,
-    marginLeft: 10, // Space between label and button
-  },
-  labelContainer: {
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#334155',
-    marginLeft: 10,
-  },
-  labelText: {
-    color: '#e2e8f0',
-    fontSize: 12,
-    fontWeight: '600',
   },
 });

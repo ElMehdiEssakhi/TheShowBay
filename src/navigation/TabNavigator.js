@@ -28,7 +28,7 @@ export default function TabNavigator() {
         tabBarInactiveTintColor: "#9ca3af",
         tabBarLabelStyle: {
           fontSize: 11,
-          marginTop: -5,
+          marginBottom: 5,
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
