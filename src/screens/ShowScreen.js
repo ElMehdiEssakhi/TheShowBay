@@ -25,7 +25,11 @@ import {
     addToWatchlist, 
     removeFromWatchlist, 
     getShowStatus,
-    saveShowReview
+    saveShowReview,
+    getPlaylists,
+    makePlaylist,
+    addToPlaylist,
+    fetchReviewsForShow
 } from "../firebase/services/firestoreService"; 
 // ---------------------------
 
@@ -39,7 +43,7 @@ export default function ShowScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedSeason, setSelectedSeason] = useState(null);
-
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(false);
   // --- NEW: WATCHLIST STATE ---
   const [inWatchlist, setInWatchlist] = useState(false);
   // Used to show a loading indicator specifically on the button if needed, 
@@ -54,11 +58,19 @@ export default function ShowScreen({ route, navigation }) {
   const [reviewText, setReviewText] = useState("");     // Text input
   const [savingReview, setSavingReview] = useState(false);
 
+  const [listModalVisible, setListModalVisible] = useState(false);
+  const [playlists, setPlaylists] = useState([]);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [creatingList, setCreatingList] = useState(false); // UI toggle for input
+  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
+
+  const [publicReviews, setPublicReviews] = useState([]);
 
   useEffect(() => {
     fetchShowData();
     // --- NEW: Check status on load ---
     checkUserStatus();
+    loadPublicReviews();
   }, [showId]);
 
 
@@ -110,26 +122,33 @@ export default function ShowScreen({ route, navigation }) {
           setWatchlistProcessing(false);
       }
   };
+  //
+  const loadPublicReviews = async () => {
+    console.log(`Loading public reviews for show ${showId}...`);
+      const reviews = await fetchReviewsForShow(showId);
+      const textReviews = reviews.filter(r => r.reviewText && r.reviewText.trim().length > 0);
+      console.log('nnnn')
+      setPublicReviews(textReviews);
+      console.log("qqqq")
+  };
   // ---------------------------
 
   const handleSaveReview = async () => {
-      setSavingReview(true);
-      
+      setSavingReview(true);     
       try {
         const showData = {
             id: data.id,
             name: data.name,
             poster: data.image?.medium || null,
-        };
-        
+        };  
         const reviewData = {
             rating: userRating,
             isFavorite: isFavorite,
             reviewText: reviewText
         };
-
         await saveShowReview(showData, reviewData);
         setModalVisible(false); // Close modal
+        loadPublicReviews();
       } catch (error) {
           Alert.alert("Error", "Failed to save review.");
           console.error("Save review error:", error);
@@ -154,12 +173,59 @@ export default function ShowScreen({ route, navigation }) {
              setSelectedSeason(uniqueSeasons[0]);
          }
       }
-
     } catch (err) {
       console.log("Error fetching details:", err);
       setError("Failed to load show details.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenListModal = async () => {
+    setListModalVisible(true);
+    setLoadingPlaylists(true);
+    try {
+        const userPlaylists = await getPlaylists();
+        setPlaylists(userPlaylists);
+        console.log(`Fetched ${playlists.length} playlists.`);
+    } catch (error) {
+        Alert.alert("Error", "Failed to load playlists.");
+        console.error("Fetch playlists error:", error);
+    } finally {
+        setLoadingPlaylists(false);
+    }
+  };
+  // 2. Create New Playlist
+  const handleCreatePlaylist = async () => {
+    if (!newPlaylistName.trim()) return;
+    
+    setLoadingPlaylists(true); // Re-use loading state
+    try {
+        await makePlaylist(newPlaylistName);
+        setNewPlaylistName("");
+        setCreatingList(false);
+        // Refresh list
+        const updated = await getPlaylists();
+        setPlaylists(updated);
+    } catch (error) {
+        Alert.alert("Error", "Could not create playlist.");
+    } finally {
+        setLoadingPlaylists(false);
+    }
+  };
+  // 3. Add Show to Selected Playlist
+  const handleAddShowToPlaylist = async (playlistId, playlistName) => {
+    try {
+        const showData = {
+            id: data.id,
+            name: data.name,
+            poster: data.image?.medium || null ,
+        };
+        await addToPlaylist(showData,playlistId);
+        setListModalVisible(false);
+        Alert.alert("Success", `Added to "${playlistName}"`);
+    } catch (error) {
+        Alert.alert("Error", "Could not add to playlist.");
     }
   };
 
@@ -270,7 +336,7 @@ export default function ShowScreen({ route, navigation }) {
             />
 
             {/* 3. List (Placeholder) */}
-            <ActionButton icon="list-outline" label="List" onPress={() => Alert.alert("Coming Soon")} />
+            <ActionButton icon="list-outline" label="List" onPress={() => handleOpenListModal()} />
             {/* 4. Share (Placeholder) */}
             <ActionButton icon="share-social-outline" label="Share" onPress={() => Alert.alert("Coming Soon")} />
           </View>
@@ -295,11 +361,88 @@ export default function ShowScreen({ route, navigation }) {
             </View>
           )}
 
+          {/* --- OVERVIEW SECTION --- */}
           <Text style={styles.sectionTitle}>Overview</Text>
-          <Text style={styles.summary}>
-            {data.summary ? data.summary.replace(/<[^>]+>/g, "") : "No summary available."}
-          </Text>
+          
+          <TouchableOpacity 
+            activeOpacity={0.7}
+            onPress={() => setIsOverviewExpanded(!isOverviewExpanded)}
+          >
+            <Text 
+              style={styles.summary} 
+              // If expanded, show all lines. If not, limit to 3.
+              numberOfLines={isOverviewExpanded ? undefined : 3}
+            >
+              {data.summary ? data.summary.replace(/<[^>]+>/g, "") : "No summary available."}
+            </Text>
+            
+            {/* Visual Indicator */}
+            <Text style={{ color: '#22c55e',marginBottom: 14, fontSize: 13, fontWeight: '600' }}>
+               {isOverviewExpanded ? "Show Less" : "Read More"}
+            </Text>
+          </TouchableOpacity>
 
+
+          {/* --- REVIEWS PREVIEW SECTION --- */}
+          <View style={styles.reviewsSection}>
+              {/* Header Row */}
+              <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>User Reviews</Text>
+                  {/* Only show "See All" if there are more than 3 reviews */}
+                  {publicReviews.length > 3 && (
+                      <TouchableOpacity 
+                          onPress={() => navigation.navigate("AllReviews", { 
+                              showId: data.id, 
+                              showName: data.name 
+                          })}
+                      >
+                          <Text style={styles.seeAllText}>See All</Text>
+                      </TouchableOpacity>
+                  )}
+              </View>
+              
+              {publicReviews.length > 0 ? (
+                  // Only show the first 3 reviews
+                  publicReviews.slice(0, 3).map((review, index) => (
+                      <View key={index} style={styles.reviewCard}>
+                          {/* Header: Avatar + Name + Rating */}
+                          <View style={styles.reviewHeader}>
+                              <View style={styles.reviewerInfo}>
+                                      <View style={[styles.reviewerAvatar, styles.avatarPlaceholder]}>
+                                          <Ionicons name="person" size={12} color="#94a3b8" />
+                                      </View>
+                                  <Text style={styles.reviewerName}>{review.authorName||"Anonymous"}</Text>
+                              </View>
+                              
+                              {review.rating > 0 && (
+                                  <View style={styles.reviewRating}>
+                                      <Ionicons name="star" size={12} color="#FFD700" />
+                                      <Text style={styles.reviewRatingText}>{review.rating}/5</Text>
+                                  </View>
+                              )}
+                          </View>
+
+                          <Text style={styles.reviewText} numberOfLines={3}>{review.reviewText}</Text>
+                      </View>
+                  ))
+              ) : (
+                  <View style={styles.emptyReviewBox}>
+                      <Text style={styles.emptyText}>No reviews yet. Be the first!</Text>
+                  </View>
+              )}
+
+              {/* If there are reviews, show a button at the bottom too for better UX */}
+              {publicReviews.length > 3 && (
+                  <TouchableOpacity 
+                      style={styles.moreReviewsBtn}
+                      onPress={() => navigation.navigate("AllReviews", { showId: data.id, showName: data.name })}
+                  >
+                      <Text style={styles.moreReviewsText}>Read {publicReviews.length - 3} more reviews</Text>
+                  </TouchableOpacity>
+              )}
+              
+              <View style={{ height: 40 }} />
+          </View>
           {/* --- CAST SECTION --- */}
           <Text style={styles.sectionTitle}>Top Cast</Text>
           <FlatList
@@ -431,6 +574,89 @@ export default function ShowScreen({ route, navigation }) {
                         <Text style={styles.saveButtonText}>Save Review</Text>
                     )}
                 </TouchableOpacity>
+
+            </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      {/* --- PLAYLIST MODAL --- */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={listModalVisible}
+        onRequestClose={() => setListModalVisible(false)}
+      >
+        <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.modalOverlay}
+        >
+            <View style={styles.modalContent}>
+                
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Add to Playlist</Text>
+                    <TouchableOpacity onPress={() => setListModalVisible(false)}>
+                        <Ionicons name="close" size={24} color="#94a3b8" />
+                    </TouchableOpacity>
+                </View>
+
+                {/* Loading State */}
+                {loadingPlaylists && (
+                    <ActivityIndicator size="small" color="#22c55e" style={{marginBottom: 20}} />
+                )}
+
+                {/* Playlist List */}
+                <FlatList
+                    data={playlists}
+                    keyExtractor={(item) => item.id}
+                    style={{ maxHeight: 300, marginBottom: 20 }}
+                    renderItem={({ item }) => (
+                        <TouchableOpacity 
+                            style={styles.playlistItem}
+                            onPress={() => handleAddShowToPlaylist(item.id, item.name)}
+                        >
+                            <View style={styles.playlistIcon}>
+                                <Ionicons name="albums-outline" size={20} color="#e2e8f0" />
+                            </View>
+                            <View style={{flex: 1}}>
+                                <Text style={styles.playlistName}>{item.name}</Text>
+                                <Text style={styles.playlistCount}>{item.itemCount || 0} Shows</Text>
+                            </View>
+                            <Ionicons name="add-circle-outline" size={24} color="#22c55e" />
+                        </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={
+                        !loadingPlaylists && (
+                            <Text style={styles.emptyText}>No playlists found. Create one below!</Text>
+                        )
+                    }
+                />
+
+                {/* Create New Section */}
+                {creatingList ? (
+                    <View style={styles.createInputContainer}>
+                        <TextInput
+                            style={styles.createInput}
+                            placeholder="Playlist Name"
+                            placeholderTextColor="#64748b"
+                            value={newPlaylistName}
+                            onChangeText={setNewPlaylistName}
+                            autoFocus
+                        />
+                        <TouchableOpacity 
+                            style={styles.createBtnSmall} 
+                            onPress={handleCreatePlaylist}
+                        >
+                            <Ionicons name="checkmark" size={20} color="#020617" />
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <TouchableOpacity 
+                        style={styles.newPlaylistBtn} 
+                        onPress={() => setCreatingList(true)}
+                    >
+                        <Ionicons name="add" size={20} color="#f8fafc" />
+                        <Text style={styles.newPlaylistText}>Create New Playlist</Text>
+                    </TouchableOpacity>
+                )}
 
             </View>
         </KeyboardAvoidingView>
@@ -649,7 +875,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     color: "#cbd5e1",
-    marginBottom: 20,
+    marginBottom: 3,
   },
   emptyText: {
       color: "#64748b",
@@ -829,5 +1055,141 @@ const styles = StyleSheet.create({
     color: "#020617",
     fontWeight: "bold",
     fontSize: 16,
+  },
+  // --- PLAYLIST MODAL STYLES ---
+  playlistItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#0f172a',
+      padding: 12,
+      borderRadius: 12,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: '#334155'
+  },
+  playlistIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
+      backgroundColor: '#1e293b',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12
+  },
+  playlistName: {
+      color: '#f8fafc',
+      fontSize: 16,
+      fontWeight: '600'
+  },
+  playlistCount: {
+      color: '#94a3b8',
+      fontSize: 12,
+      marginTop: 2
+  },
+  newPlaylistBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 16,
+      backgroundColor: '#1e293b',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#334155',
+      borderStyle: 'dashed'
+  },
+  newPlaylistText: {
+      color: '#f8fafc',
+      marginLeft: 8,
+      fontWeight: '600'
+  },
+  createInputContainer: {
+      flexDirection: 'row',
+      gap: 10
+  },
+  createInput: {
+      flex: 1,
+      backgroundColor: '#0f172a',
+      color: '#f8fafc',
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#22c55e'
+  },
+  createBtnSmall: {
+      backgroundColor: '#22c55e',
+      width: 50,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center'
+  },
+  sectionHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10
+  },
+  seeAllText: {
+      color: '#22c55e',
+      fontSize: 14,
+      fontWeight: '600'
+  },
+  moreReviewsBtn: {
+      alignItems: 'center',
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: '#1e293b',
+      marginTop: -4 // overlap slighty or adjust as needed
+  },
+  moreReviewsText: {
+      color: '#94a3b8',
+      fontSize: 13,
+      fontWeight: '500'
+  },
+  // Add these to your const styles = StyleSheet.create({ ... })
+
+  reviewerName: {
+      color: '#e2e8f0', // <--- This White color makes the name visible
+      fontSize: 14,
+      fontWeight: '600'
+  },
+  reviewRatingText: {
+      color: '#FFD700', // <--- This Yellow color makes the rating visible
+      fontSize: 12,
+      fontWeight: 'bold'
+  },
+  reviewText: {
+      color: '#cbd5e1', // <--- This Gray color makes the review body visible
+      fontSize: 14,
+      lineHeight: 20
+  },
+  
+  // ... ensure these container styles are there too:
+  reviewCard: {
+      backgroundColor: '#0f172a',
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: '#1e293b'
+  },
+  reviewHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10
+  },
+  reviewerInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8
+  },
+  reviewRating: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(255, 215, 0, 0.1)',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8
   },
 });

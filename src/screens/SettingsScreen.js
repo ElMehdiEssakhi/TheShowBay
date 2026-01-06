@@ -66,33 +66,33 @@ export default function SettingsScreen({ navigation }) {
             <SettingItem 
                 icon="lock-closed-outline" 
                 label="Change Password" 
-                onPress={() => Alert.alert("Coming Soon")} 
+                onPress={() => navigation.navigate("ChangePassword")} 
             />
-            <View style={styles.divider} />
+            {/* <View style={styles.divider} />
             <SettingItem 
                 icon="shield-checkmark-outline" 
                 label="Privacy & Security" 
                 onPress={() => Alert.alert("Coming Soon")} 
-            />
+            /> */}
         </View>
 
         {/* SECTION: PREFERENCES */}
         <Text style={styles.sectionHeader}>Preferences</Text>
         <View style={styles.sectionContainer}>
-            <SettingSwitch 
+            {/* <SettingSwitch 
                 icon="notifications-outline" 
                 label="Push Notifications" 
                 value={notifications}
                 onValueChange={setNotifications}
-            />
-            <View style={styles.divider} />
+            /> */}
+            {/* <View style={styles.divider} />
             <SettingSwitch 
                 icon="cellular-outline" 
                 label="Data Saver (Low Quality Images)" 
                 value={dataSaver}
                 onValueChange={setDataSaver}
-            />
-            <View style={styles.divider} />
+            /> */}
+            {/* <View style={styles.divider} /> */}
             <SettingItem 
                 icon="moon-outline" 
                 label="Theme" 
@@ -107,13 +107,13 @@ export default function SettingsScreen({ navigation }) {
             <SettingItem 
                 icon="help-circle-outline" 
                 label="Help Center" 
-                onPress={() => Alert.alert("Coming Soon")} 
+                onPress={() => navigation.navigate("HelpCenter")} 
             />
             <View style={styles.divider} />
             <SettingItem 
                 icon="bug-outline" 
                 label="Report a Bug" 
-                onPress={() => Alert.alert("Coming Soon")} 
+                onPress={() => navigation.navigate("ReportBug")} 
             />
         </View>
 

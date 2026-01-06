@@ -4,46 +4,21 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
-  Alert,
   StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { signOut } from "firebase/auth";
-import { auth } from "../firebase/config"; // Make sure path is correct
+import {getUserProfile} from "../firebase/services/firestoreService";
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    if (auth.currentUser) {
-      setUser(auth.currentUser);
-    }
+      getUserProfile().then(profile => setUser(profile));
   }, []);
 
-  const handleLogout = async () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to log out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Log Out",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await signOut(auth);
-              // App.js listener will handle redirection to Login
-            } catch (err) {
-              Alert.alert("Error", err.message);
-            }
-          },
-        },
-      ]
-    );
-  };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -56,7 +31,7 @@ export default function ProfileScreen({ navigation }) {
         </View>
         <View>
           <Text style={styles.username}>
-            {user?.email?.split('@')[0] || "User"}
+            {user?.name || "User"}
           </Text>
           <Text style={styles.email}>{user?.email || "No email"}</Text>
         </View>
@@ -70,18 +45,18 @@ export default function ProfileScreen({ navigation }) {
         {/* --- STATS ROW --- */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{user?.reviewCount || 0}</Text>
             <Text style={styles.statLabel}>Shows</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Episodes</Text>
+            <Text style={styles.statNumber}>{user?.watchlistCount || 0}</Text>
+            <Text style={styles.statLabel}>WatchList</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Hours</Text>
+            <Text style={styles.statNumber}>{user?.listCount || 0}</Text>
+            <Text style={styles.statLabel}>Playlists</Text>
           </View>
         </View>
 
@@ -89,27 +64,14 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           
+          <MenuOption icon="chatbox-ellipses-outline" label="My Reviews" onPress={() => navigation?.navigate("MyReviews")} />
           <MenuOption icon="heart-outline" label="Favorites" onPress={() => navigation?.navigate("Favorites")} />
-          <MenuOption icon="list-outline" label="My Lists" onPress={() => alert("My Lists Coming Soon!")} />
+          <MenuOption icon="list-outline" label="My Lists" onPress={() => navigation?.navigate("MyLists")} />
           <MenuOption icon="time-outline" label="WatchList" onPress={() => navigation?.navigate("Watchlist")} />
+          
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>General</Text>
-          
-          <MenuOption icon="notifications-outline" label="Notifications" onPress={() => alert("Notifications Coming Soon!")} />
-          <MenuOption icon="help-circle-outline" label="Help & Support" onPress={() => alert("Help & Support Coming Soon!")} />
-          
-          {/* Logout Button */}
-          <TouchableOpacity style={styles.menuOption} onPress={handleLogout}>
-            <View style={[styles.iconBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-              <Ionicons name="log-out-outline" size={20} color="#ef4444" />
-            </View>
-            <Text style={[styles.menuText, { color: "#ef4444" }]}>Sign Out</Text>
-            <Ionicons name="chevron-forward" size={16} color="#334155" />
-          </TouchableOpacity>
-        </View>
-
+        
       </ScrollView>
     </SafeAreaView>
   );
