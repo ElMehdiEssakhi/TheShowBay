@@ -76,30 +76,30 @@ export default function SettingsScreen({ navigation }) {
             /> */}
         </View>
 
-        {/* SECTION: PREFERENCES */}
+        {/* SECTION: PREFERENCES 
         <Text style={styles.sectionHeader}>Preferences</Text>
         <View style={styles.sectionContainer}>
-            {/* <SettingSwitch 
+            <SettingSwitch 
                 icon="notifications-outline" 
                 label="Push Notifications" 
                 value={notifications}
                 onValueChange={setNotifications}
-            /> */}
-            {/* <View style={styles.divider} />
+            />
+            <View style={styles.divider} />
             <SettingSwitch 
                 icon="cellular-outline" 
                 label="Data Saver (Low Quality Images)" 
                 value={dataSaver}
                 onValueChange={setDataSaver}
-            /> */}
-            {/* <View style={styles.divider} /> */}
+            />
+            <View style={styles.divider} />
             <SettingItem 
                 icon="moon-outline" 
                 label="Theme" 
                 valueText="Dark"
                 onPress={() => Alert.alert("Theme locked to Dark Mode")} 
             />
-        </View>
+        </View> */}
 
         {/* SECTION: SUPPORT */}
         <Text style={styles.sectionHeader}>Support</Text>
